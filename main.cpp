@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <string>
 
 #include <cstdio>
 #include <windows.h>
@@ -41,7 +42,7 @@ sf::SoundBuffer engineSoundBuffer;
 sf::Sound soundEngine;
 
 //Simulation Model Variables//
-int domainSize[2] = { 80, 80 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
+int domainSize[2] = { 12, 12 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
 int ceiling = 2;							//The audio row and isloation row located at top of texture, comprising the "ceiling".
 float excitationPosition[2] = { 0.7,0.5 };	//Contains coordinates of the excitation point - Currently supports one point.
 int listenerPosition[2] = { 5,5 };			//Contains coordinates of the audio sampling point - Currently supports one point.
@@ -49,9 +50,9 @@ int buffer_size = 128;						//Size of the audio buffer - The number samples reco
 
 //User Defined Settings//
 int sampleRate = 44100;													//Rate at which simulation is advanced, and audio sample collected.
-int duration = 10;														//Duration of simulation.
-float maxExcitation = 1.0;												//Amplitude of spike from excitation.
-int excitationFrequency = 1000;											//Frequency of spikes. Number of zeros before excitation spike.
+int duration = 20;														//Duration of simulation.
+float maxExcitation = 15.0;												//Amplitude of spike from excitation.
+int excitationFrequency = 20;										//Frequency of spikes. Number of zeros before excitation spike.
 int excitationDuration = sampleRate / excitationFrequency;				//How often strike/excitation.
 
 /*
@@ -81,8 +82,16 @@ bool loadShaderProgram(const char* vertexShaderPath, const char* fragmentShaderP
 //On mouse click callback - Handles setting new excitation point//
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
-int main()
+int main(int argc, char* argv[])
 {
+	//Command line control//
+	//if (argc != 5)
+	//	std::cout << "wrong\n";
+	//propagationFactor = std::stoi(argv[1]);
+	//dampingFactor = std::stoi(argv[2]);
+	//boundaryGain = std::stoi(argv[3]);
+	//isSingleExcitation = *argv[4] == '1';
+	
 	///////////////////////////////
 	//Set model static parameters//
 	///////////////////////////////
@@ -128,17 +137,16 @@ int main()
 		std::cout << "Failed to initialize GLAD" << std::endl;
 		return -1;
 	}
-	glPointSize(MAGNIFIER); //Set magnifier to 10 - Factor increase number pixels in fragment.
 	std::cout << "OpenGL " << glGetString(GL_VERSION) << " Supported" << std::endl;
 
 	////////////////////////
 	//Load Shader Programs//
 	////////////////////////
 
-	const char* vertex_fbo_shader_path = { "Shaders/fbo_vs.glsl" }; // vertex shader of solver program
-	const char* fragment_fbo_shader_path = { "Shaders/fbo_fs.glsl" }; // fragment shader of solver program
-	const char* vertex_render_shader_path = { "Shaders/render_vs.glsl" }; // vertex shader of render program
-	const char* fragment_render_shader_path = { "Shaders/render_fs.glsl" }; // fragment shader of render program
+	const char* vertex_fbo_shader_path = { "Shaders/fbo_vs.glsl" };			//Vertex shader of solver program
+	const char* fragment_fbo_shader_path = { "Shaders/fbo_fs.glsl" };		//Fragment shader of solver program
+	const char* vertex_render_shader_path = { "Shaders/render_vs.glsl" };	//Vertex shader of render program
+	const char* fragment_render_shader_path = { "Shaders/render_fs.glsl" }; //Fragment shader of render program
 
 	GLuint fboShaderProgram = 0;
 	if (!loadShaderProgram(vertex_fbo_shader_path, fragment_fbo_shader_path, fboShaderProgram))
@@ -152,21 +160,20 @@ int main()
 	//Structure texture with FDTD audio layout//
 	////////////////////////////////////////////
 
-	//Specify infromation numbers for texture//
-	int numOfAttributesPerVertex = 12;						//The number of pieces of information each vertex contains.
-	int numOfVerticesPerQuad = 4;							//Number of vertices that make up each texture quad.
-
 	//Calculate texture size to fit FDTD structure//
 	int textureWidth = domainSize[0] * NUM_OF_TIMESTEPS;	//The texture needs to contain the two timestep quads.
 	int textureHeight = domainSize[1] + ceiling;			//The texture needs to contain the quad and then the isolation and audio row.
 
-	//Calculate delta texture coordinates - The representation shaders use from width and height//
+	//Calculate delta texture coordinates - The width & height of each fragment//
 	float deltaX = 1.0 / (float)textureWidth;
 	float deltaY = 1.0 / (float)textureHeight;
 
 	//Calculate delta to compute vertex y position leaving space for isolation + audio row.
 	float deltaV = 2.0 / (float)textureHeight;				//Unsure about this?
 
+	//Specify information for texture//
+	int numOfAttributesPerVertex = 12;						//The number of pieces of information each vertex contains.
+	int numOfVerticesPerQuad = 4;							//Number of vertices that make up each texture quad.
 	float attributes[] = {
 		// quad0 [left quadrant]
 		// 4 vertices
@@ -210,23 +217,26 @@ int main()
 	vertices[2][0] = 8;
 	vertices[2][1] = numOfVerticesPerQuad;
 
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//Create VBO + VAO objects - The VBO is the data passed to the GPU and VAO interprets how to read the VBO content//
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	////////////////////////////
+	//Create VBO + VAO objects//
+	////////////////////////////
+
+	//VBO is GPU memory containing vertices data//
 	unsigned int vbo;
 	glGenBuffers(1, &vbo);
-	//glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	//glBufferData(GL_ARRAY_BUFFER, sizeof(attributes), attributes, GL_STATIC_DRAW);
 
+
+	//VAO interprets how VBO content is read//
 	unsigned int vao;
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(attributes), attributes, GL_STATIC_DRAW);
 
-	///////////////////////////////////////////////
-	//Describe attributes shaders access from VBO//
-	///////////////////////////////////////////////
+	/////////////////////////////////////////////
+	//Describe attributes shaders access in VBO//
+	/////////////////////////////////////////////
+
 	int numOfElementsPerAttribute = 4;	//Each attribute has 2 sets of coodinates. Therefore 4(vec4) elements form vertices data structure.
 
 	GLint pos_and_texc_loc = glGetAttribLocation(fboShaderProgram, "pos_and_texc");
@@ -241,7 +251,7 @@ int main()
 	glEnableVertexAttribArray(texr_and_texd_loc);
 	glVertexAttribPointer(texr_and_texd_loc, numOfElementsPerAttribute, GL_FLOAT, GL_FALSE, numOfAttributesPerVertex * sizeof(GLfloat), (void*)(2 * numOfElementsPerAttribute * sizeof(GLfloat)));
 
-	//Need to set attribute for render shader?//
+	//Safe to set the location for the render shader too - Though it should be same location as already specified//
 	pos_and_texc_loc = glGetAttribLocation(renderShaderProgram, "pos_and_texc");
 	glEnableVertexAttribArray(pos_and_texc_loc);
 	glVertexAttribPointer(pos_and_texc_loc, numOfElementsPerAttribute, GL_FLOAT, GL_FALSE, numOfAttributesPerVertex * sizeof(GLfloat), (void*)(0 * numOfElementsPerAttribute * sizeof(GLfloat)));
@@ -251,17 +261,18 @@ int main()
 	/////////////////////
 
 	//Initalize flattened multidimensional float array that will contain all fragments//
-	uint8_t numChannels = 4;	//4 channels per pixel - RGBA.
-	float* texturePixels = new float[textureWidth*textureHeight*numChannels];
+	uint8_t numChannels = 4;																//4 channels per pixel - RGBA.
+	float* texturePixels = new float[textureWidth*textureHeight*numChannels];				//Allocate enough memory to represent texture.
 	memset(texturePixels, 0, sizeof(float) * textureWidth * textureHeight * numChannels);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//Define the domain - The area of the texture which includes information. Normal points, boundaries, excitation points//
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	float** pointType[3];	//Why need three types? Normal point, excitation point, ???
+
+	float** pointType[3];	//Why need three types? Normal point, excitation point, and???
 
 	//Allocate memory for x axis//
-	pointType[0] = new float*[domainSize[0]];	//Allocate memory for float pointer of size domainSize[0].
+	pointType[0] = new float*[domainSize[0]];
 	pointType[1] = new float*[domainSize[0]];
 	for (int i = 0; i != domainSize[0]; ++i)
 	{
@@ -296,9 +307,9 @@ int main()
 		pointType[0][domainSize[0] - 1][i] = 0;
 	}
 
-	////////////////////////////////////////////////////////////////////////
-	//Define domain in texture - Copy domain into point type channels R, A//
-	////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
+	//Apply domain in texture - Copy domain point types into  channels R, A //
+	//////////////////////////////////////////////////////////////////////////
 	for (int i = 0; i != textureWidth; ++i)
 	{
 		for (int j = 0; j != textureHeight - ceiling; ++j)
@@ -318,11 +329,6 @@ int main()
 		}
 	}
 
-	for (int i = 0; i != sizeof(texturePixels) * 4; ++i)
-	{
-		std::cout << texturePixels[i] << " ";
-	}
-
 	//Clean up//
 	for (int i = 0; i < domainSize[0]; i++) {
 		delete[] pointType[0][i];
@@ -334,38 +340,40 @@ int main()
 	///////////////////////////////////////////
 	//Create texture using texture pixel data//
 	///////////////////////////////////////////
+
 	unsigned int texture;
 	glGenTextures(1, &texture);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureWidth, textureHeight, 0, GL_RGBA, GL_FLOAT, texturePixels);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, textureWidth, textureHeight, 0, GL_RGBA, GL_FLOAT, texturePixels);	//Load texture pixels that define inital model state.
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	//glBindTexture(GL_TEXTURE_2D, 0);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureWidth, textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	//glGenerateMipmap(GL_TEXTURE_2D);
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//Create Framebuffer object - Memory we write the texture to on memory. This is done instead of using the default rendering framebuffer provided for window//
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 	unsigned int fbo;
 	glGenFramebuffers(1, &fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);	//Should be able to use GL_DRAW_FRAMEBUFFER as only written to.
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-	//Check fbo complete//
+
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "VIKTOR!";
+		std::cout << "Framebuffer object successfully created!" << std::endl;
+	else
+		std::cout << "Error creating framebuffer." << std::endl;
 
 	///////////////////////////////////////////////////////////////////////////////
 	//Create Pixel buffer object - Apparently to read from texture, Audio buffer?//
 	///////////////////////////////////////////////////////////////////////////////
-	//I think because we bind this buffer here. When using glReadPixels() later. It reads pixels from framebuffer into the pbo as state still remains//
+
+	//The pbo is bound here, therefore later when glReadPixels used it reas from this pbo implicitly//
 	unsigned int pbo;
 	glGenBuffers(1, &pbo);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
-	glBufferData(GL_PIXEL_PACK_BUFFER, sizeof(float)*buffer_size * 4, NULL, GL_STREAM_READ);	//If we are using pbo to read do we use this??
+	glBufferData(GL_PIXEL_PACK_BUFFER, sizeof(float)*buffer_size * 4, NULL, GL_STREAM_READ);
 
 	/////////////////////////////////////////////////////////////////////////////
 	//Calculate useful(?) values - These will be used as uniforms in the shader//
@@ -381,21 +389,22 @@ int main()
 	//Quad0 reads audio from Quad1//
 	listenerFragCoord[0][0] = (float)(listenerPosition[0] + 0.5 + domainSize[0]) / (float)textureWidth;
 	listenerFragCoord[0][1] = (float)(listenerPosition[1] + 0.5) / (float)textureHeight;
+
 	//Quad1 reads audio from Quad0//
 	listenerFragCoord[1][0] = (float)(listenerPosition[0] + 0.5) / (float)textureWidth;
 	listenerFragCoord[1][1] = (float)(listenerPosition[1] + 0.5) / (float)textureHeight;
-	//Apparently +0.5 needed to match fragment we want to sample. Would like to know why.
+	//Apparently +0.5 needed to match fragment we want to sample. Would like to know why//
 
-	//////////////////////////////////
-	//Setup Uniform data for shaders//
-	//////////////////////////////////
+	//////////////////////////////
+	//Setup FBO Shader Uniforms//
+	/////////////////////////////
 
-	//////////////////////////////////
 	//Update the FBO shader uniforms//
 	glUseProgram(fboShaderProgram);
 
 	///////////////////
 	//Static Uniforms//
+	///////////////////
 
 	GLuint propagationFactorLocation = glGetUniformLocation(fboShaderProgram, "propFactor");
 	glUniform1f(propagationFactorLocation, propagationFactor);
@@ -421,10 +430,11 @@ int main()
 
 	////////////////////
 	//Dynamic Uniforms//
+	////////////////////
 
 	//Dynamic Uniform Variables//
 	float excitationMagnitude = 0;							//Starts with no excitation.
-	int currentQuad = QUAD0;								//Is this the current quad of focus for audio sample? // we start to draw from quad 0, left
+	int currentQuad = QUAD0;								//Quad focused on for current time step - We start to draw from quad 0, left quad.
 	float wrCoord[2] = { 0, 0 };							//Coordinates of current audio buffer recording point - Contains x coordinate of fragment and index of next available RGBA channel.
 
 	//The current state of FDTD processing in the shader//
@@ -440,20 +450,22 @@ int main()
 	wrCoordLocation = glGetUniformLocation(fboShaderProgram, "wrCoord");
 
 	//Set inOutTexture uniform to the texture number zero created previously//
-	//Not directly updating it. Simply initializing it by mapping FBO to first texture created - At index 0//
 	glUniform1i(glGetUniformLocation(fboShaderProgram, "inOutTexture"), 0);
 
-	/////////////////////////////////////
-	//Update the render shader uniforms//
+	//////////////////////////////////
+	//Update render shader uniforms//
+	/////////////////////////////////
+
 	glUseProgram(renderShaderProgram);
 
 	///////////////////
 	//Static Uniforms//
+	///////////////////
+
 	GLuint deltaCoordLocationRender = glGetUniformLocation(renderShaderProgram, "deltaCoord");
 	glUniform2f(deltaCoordLocationRender, deltaCoordX, deltaCoordY);
 
 	//Listener fragment coordinates as uniforms - Only need one quad for rendering//
-	//Texture accessed only, as there is no FBO
 	GLuint listenerFragCoordLocationRender = glGetUniformLocation(renderShaderProgram, "listenerFragCoord");
 	glUniform2f(listenerFragCoordLocationRender, listenerFragCoord[0][0], listenerFragCoord[0][1]);
 
@@ -475,10 +487,7 @@ int main()
 
 	//Initalize variables//
 	state = -1;
-	int sampleCnt = 0;	//Think it is sample counter, used to show when next excitation should occour???
-
-	//Allocate enough memort for global audio buffer to fit all the required samples in at the samplerate and duration//
-	//audioBuffer = new float[bufferNum*buffer_size];
+	int sampleCnt = 0;	//Think it is sample counter, used to show when next excitation should occour.
 
 	//Cycle filling audio buffer until desired durations worth collected//
 	for (int i = 0; i != bufferNum; ++i)
@@ -496,6 +505,7 @@ int main()
 		{
 			//////////////////////
 			//Advance Simulation//
+			//////////////////////
 
 			//Pass next excitation Value//
 			glUniform1f(excitationMagnitudeLocation, excitationMagnitude);
@@ -507,8 +517,8 @@ int main()
 			glDrawArrays(GL_TRIANGLE_STRIP, vertices[currentQuad][0], vertices[currentQuad][1]);	//Draw quad0 or quad1.
 
 			//Audio step - Read audio sample from previous quad, defined by current state//
-			glUniform2fv(wrCoordLocation, 1, wrCoord);		//Fragment and channel.
-			glUniform1i(stateLocation, state + 1);			//Use next state, which will be to read audio from correct quad in shader.
+			glUniform2fv(wrCoordLocation, 1, wrCoord);									//Fragment and channel.
+			glUniform1i(stateLocation, state + 1);										//Use next state, which will be to read audio from correct quad in shader.
 			glDrawArrays(GL_TRIANGLE_STRIP, vertices[QUAD2][0], vertices[QUAD2][1]);	//Draw quad2, the audio quad. Appending audio from quad0 or quad1.
 
 			//Prepare next simulation cycle//
@@ -540,28 +550,27 @@ int main()
 		//Retrieve audio samples from texture - Uses pbo as last buffer bind//
 		glReadPixels(0, textureHeight - 1, buffer_size / 4, 1, GL_RGBA, GL_FLOAT, 0);	//Quad2 is single audio row on top of texture with 4 samples in each row.
 		float* sampleBuffer = (float*)glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);	//Apparently to have physical copy of smaples on CPU.
+		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);	//Apparently to have physical copy of samples on CPU.
 
 		//Append audio texture samples to audioBuffer//
-		//memcpy(audioBuffer + i*(buffer_size), sampleBuffer, buffer_size * sizeof(float));
 		for (int i = 0; i != buffer_size; ++i)
 		{
-			//Should be signed?//
-			sf::Int16 sample = sampleBuffer[i] * 32767;
-			//xPos = (((xPos - 0.0)*(1.0 - 0.5)) / (1.0 - 0.0)) + 0.5;
+			//Should go from full singed range or unsigned?//
+			//sf::Int16 sample = sampleBuffer[i];
+			//sf::Int16 sample = sampleBuffer[i] * 32767;
 			//sf::Int16 sample = (((sampleBuffer[i] - 0.0)*(32767 + 32768)) / (1.0 - 0.0)) - 32768;
+			sf::Int16 sample = (((sampleBuffer[i] + 15.0)*(32767 + 32768)) / (15.0 + 15.0)) - 32768;
 			playbackAudioBuffer.push_back(sample);
-			//realTimeAudioBuffer.push_back(sample);
 			realTimeAudioBuffer[sampleCounter++] = sample;
 		}
 
+		//Implement timing to playback realtime audio?//
 		clock_t endRealTimeClock = clock();
 		clock_t differenceRealTimeClock = endRealTimeClock - beginRealTimeClock;
 		if (differenceRealTimeClock < MICROSECS_IN_SEC)
 			//Sleep(MICROSECS_IN_SEC - renderFrame);
 
 		//Real Time audio - Plays second of samples when accumulated//
-		//sampleCounter += buffer_size;
 		if (sampleCounter > sampleRate)
 		{
 			engineSoundBuffer.loadFromSamples(&realTimeAudioBuffer[0], sampleCounter, 1, 44100);
@@ -577,10 +586,7 @@ int main()
 		glViewport(0, 0, textureWidth*MAGNIFIER, textureHeight*MAGNIFIER);
 
 		//Render to screen//
-		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		//glBindTexture(GL_TEXTURE_2D, texture);
-		glDrawArrays(GL_TRIANGLE_STRIP, vertices[QUAD0][0], vertices[QUAD0][1]);	//Just pass quad0 fro  texture to render.
+		glDrawArrays(GL_TRIANGLE_STRIP, vertices[QUAD0][0], vertices[QUAD0][1]);	//Just pass quad0 from  texture to render.
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 
@@ -678,6 +684,6 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 		yPos = 1.0 - yPos;
 		excitationPosition[0] = xPos;
 		excitationPosition[1] = yPos;
-		maxExcitation = 1.0;
+		maxExcitation = 15.0;
 	}
 }

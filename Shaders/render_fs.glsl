@@ -43,12 +43,9 @@ vec4 get_color_from_pressure(float p) {
 	float log_scale = (log(slider + 1e-8) + log_min) / log_min;
 	float clamp_scale = clamp(log_scale, 0, 1);
 
-	//if(p==0)
-	//	return color_pink;
 	if (p > 0)
-		return mix(vec4(0), color_white, p);
-	return mix(vec4(0), color_blue, p);
-	//return color_pink;
+		return mix(vec4(0), color_white, clamp_scale);
+	return mix(vec4(0), color_blue, clamp_scale);
 }
 
 void main () {
