@@ -42,7 +42,7 @@ sf::SoundBuffer engineSoundBuffer;
 sf::Sound soundEngine;
 
 //Simulation Model Variables//
-int domainSize[2] = { 12, 12 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
+int domainSize[2] = { 35, 35 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
 int ceiling = 2;							//The audio row and isloation row located at top of texture, comprising the "ceiling".
 float excitationPosition[2] = { 0.7,0.5 };	//Contains coordinates of the excitation point - Currently supports one point.
 int listenerPosition[2] = { 5,5 };			//Contains coordinates of the audio sampling point - Currently supports one point.
