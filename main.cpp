@@ -12,6 +12,9 @@
 #include <SFML/Audio.hpp>
 #include <vector>
 
+#include "squareWave.h"
+#include "sineWave.h"
+
 ///////////
 //DEFINES//
 ///////////
@@ -42,7 +45,7 @@ sf::SoundBuffer engineSoundBuffer;
 sf::Sound soundEngine;
 
 //Simulation Model Variables//
-int domainSize[2] = { 35, 35 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
+int domainSize[2] = { 40, 40 };				//Number of simulation points - The number of cartisian cells in one quad. Used to produce models of both timesteps.
 int ceiling = 2;							//The audio row and isloation row located at top of texture, comprising the "ceiling".
 float excitationPosition[2] = { 0.7,0.5 };	//Contains coordinates of the excitation point - Currently supports one point.
 int listenerPosition[2] = { 5,5 };			//Contains coordinates of the audio sampling point - Currently supports one point.
@@ -54,6 +57,8 @@ int duration = 20;														//Duration of simulation.
 float maxExcitation = 15.0;												//Amplitude of spike from excitation.
 int excitationFrequency = 20;										//Frequency of spikes. Number of zeros before excitation spike.
 int excitationDuration = sampleRate / excitationFrequency;				//How often strike/excitation.
+SquareWaveExcitor squareWaveExcitor = SquareWaveExcitor();
+SineWaveExcitor sineWaveExcitor = SineWaveExcitor();
 
 /*
 * state0: draw quad0 [left]
@@ -116,7 +121,7 @@ int main(int argc, char* argv[])
 	//////////////////////////
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
@@ -345,7 +350,7 @@ int main(int argc, char* argv[])
 	glGenTextures(1, &texture);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, textureWidth, textureHeight, 0, GL_RGBA, GL_FLOAT, texturePixels);	//Load texture pixels that define inital model state.
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, textureWidth, textureHeight, 0, GL_RGBA, GL_FLOAT, texturePixels);	//Load texture pixels that define inital model state.
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -528,7 +533,7 @@ int main(int argc, char* argv[])
 				wrCoord[0] += deltaCoordX;
 
 			//Next excitation//
-			if (++sampleCnt == excitationDuration)
+			/*if (++sampleCnt == excitationDuration)
 			{
 				excitationMagnitude = maxExcitation;
 				sampleCnt = 0;
@@ -536,11 +541,21 @@ int main(int argc, char* argv[])
 					maxExcitation = 0;
 			}
 			else
+				excitationMagnitude = 0;*/
+
+			//New excitation method//
+			if (squareWaveExcitor.isExcitation())
+			{
+				excitationMagnitude = squareWaveExcitor.getNextSample();
+			}
+			else
 				excitationMagnitude = 0;
 
 			//Re-sync all parallel GPU threads - Also done implictly when buffers swapped//
 			//Basically glDrawArray calls make asynchronous GPU computations - Calling this makes CPU wait for all GPU threads to complete before continue//
-			glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
+			//gl texture barrier//
+			glFlush();
+			//glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 		}
 
 		//Reset audio buffer write coordinates to beginning of buffer and first channel//
@@ -684,6 +699,8 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 		yPos = 1.0 - yPos;
 		excitationPosition[0] = xPos;
 		excitationPosition[1] = yPos;
-		maxExcitation = 15.0;
+		//maxExcitation = 15.0;
+		squareWaveExcitor.resetExcitation();
+		sineWaveExcitor.resetExcitation();
 	}
 }

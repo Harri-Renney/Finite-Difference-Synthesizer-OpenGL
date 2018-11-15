@@ -1,4 +1,4 @@
-#version 440
+#version 410
 
 /* fragment shader: FDTD solver running on all the fragments of the texture [grid points]. Also saves audio. Result is rendered to the taxture, via FBO */
 
@@ -77,6 +77,9 @@ vec4 computeFDTD()
 	//Add excitation if this is excitation point [piece of cake]
 	//int is_excitation = int(frag_color.a);
 	//p_next += excitationMagnitude * is_excitation;
+	
+	//Low pass filter?//
+	//p_next = (p_next+p_prev)/2.0;
 	
 	//Change excitation point//
 	vec2 posDiff = vec2(tex_c.x - excitationPosition.x, tex_c.y - excitationPosition.y);
